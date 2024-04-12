@@ -1,0 +1,577 @@
+
+
+rm(list = ls())
+
+
+
+#estimate_fun <- function(j){
+
+n=400;r=2;rep=100
+result <- matrix(NA,rep,39+2) 
+result_G_r2 <-  matrix(NA,n,rep) 
+result_G_r1 <- matrix(NA,n,rep)
+#j=1;p=100;n=100;r=2;rep=3
+#result <- matrix(NA,rep,14) 
+
+estimate_fun <- function(j){
+  
+  #for (j in 1:rep) {
+  
+  
+  
+  
+  set.seed(j)
+  sigma_laten <-1
+  e_eps <-  rnorm(n,0,sigma_laten)
+  
+  
+  # data generate
+  ############################
+  r <- c(1,2)
+  pi_r <- c(0.5,0.5)
+  mu_r1_v <- c(rep(-2,n/2),rep(2,n/2))
+  mu_r2_v <- c(rep(-2,n/2),rep(2,n/2))
+  
+  sigmma_r1_v <- c(rep(0.5,n/2),rep(0.5,n/2))
+  sigmma_r2_v <- c(rep(0.5,n/2),rep(0.5,n/2))
+  
+  gamma_r1_v <- c(rep(1,n/2),rep(1,n/2)) # fixed
+  
+  gamma_r2_v <- c(rep(1,n/2),rep(1,n/2))
+  
+  
+  # p=100
+  #p2 = p-p1; x22 <- matrix(runif(n*p2,0,0.5),n,p2)
+  #x <- cbind(x11,x22)
+  #p1 = 100; x <- matrix(runif(n*p1,0.1,0.5),n,p1)
+  p=300;x <- matrix(rnorm(n*p,0.1,0.5),n,p)
+  
+  #p=20;x <- matrix(rnorm(n*p,0.1,0.5),n,p)
+  #p=20;x <- matrix(rnorm(n*p,0.1,1),n,p)
+  #p=300; x <- scale(matrix(rbinom(n*p,1,0.1),n,p)) + 0.1
+  
+  #p=10;x <- matrix(runif(n*p,0,0.5),n,p)
+  
+  x_tuta <- apply(x,1,sum) # 行求和
+  x_tuta2 <- sqrt(apply(x^2, 1, sum))
+  
+  
+  
+  ## latent variable
+  #sigma_laten <-1
+  #e <- rnorm(n,0,sigma_laten)
+  
+  v_p =20
+  sigma_v <- 1
+  v <- matrix(rnorm(n*v_p,0,sigma_v),n,v_p)
+  #v <- matrix(runif(n*v_p,0,sigma_v),n,v_p)
+  
+  #v_beta <- c(1,rep(0,v_p-1))
+  #sigma_laten_e <-sqrt(sigma_laten^2+1*sigma_v^2)
+  
+  v_beta <- c(rep(1,4),rep(0,v_p-4))
+  #e <- v %*% v_beta + rnorm(n,0,sigma_laten)
+  sigma_laten_e <-sqrt(sigma_laten^2+1*sigma_v^2)
+  
+  
+  #hist(e)
+  #e <- rnorm(n,0,sigma_laten_e)
+  #sd(e)
+  
+  # e <- rnorm(n,v %*% v_beta,0.5)
+  #hist(e)
+  #sigma_laten <-1
+  
+  
+  sigma_e <- 0.01
+  
+  eps_r1 <- c()
+  eps_r2 <- c()
+  
+  eps_r1 <- rnorm(n,0,sigma_e)
+  eps_r2 <- rnorm(n,0,sigma_e)
+  
+  x1 <-rnorm(n,0,1)
+  x2 <-rnorm(n,0,1)
+  
+  beta1 <- 0.5
+  beta2 <- 1
+  
+  vr1_effct <- rnorm(n,0,sigmma_r1_v)
+  vr2_effct <- rnorm(n,0,sigmma_r2_v)
+  
+  
+  
+  y_r1_H <- x1*beta1 + x2*beta2+x_tuta*mu_r1_v + x_tuta2*vr1_effct + gamma_r1_v*( v %*% v_beta + e_eps) + eps_r1
+  
+  y_r2_H <- x1*beta1 + x2*beta2+x_tuta*mu_r2_v + x_tuta2*vr2_effct + gamma_r2_v*( v %*% v_beta + e_eps) + eps_r2
+  
+  
+ # coef(lm(y_r1_H~-1+x1+x2+x_tuta+v+e_eps))
+  #hist(y_r1_H)
+  #hist(y_r2_H)
+  
+  #hist(y_r2_H)
+  
+  H_y=cbind(y_r1_H,y_r2_H)
+  
+  
+  ####################################################################
+  
+  
+  
+  ##########################################################################
+  # 数据转换
+  # 从转换模型到y
+  y_r1 <-  (2 * (y_r1_H > 0) - 1)* abs(y_r1_H)^(1/3)
+  y_r2 <- exp(y_r2_H)
+  
+ 
+  
+  
+  ##objece function
+  # 将离散变量转成虚拟变量
+  library("nnet")
+  y_r2_onehot <- class.ind(y_r2)
+  
+  
+  G_r1 <- y_r1_H
+  G_r2 <- y_r2_H
+  #step1 对latent variable “e” 数值积分
+  n_e_hermit <- n
+  e_hermit <- rnorm(n_e_hermit,0,sigma_laten)
+  r2_k1 <-matrix(NA,n_e_hermit,1)
+  r2_k2 <- matrix(NA,n_e_hermit,1)
+  r1_k1 <-matrix(NA,n_e_hermit,1)
+  r1_k2 <- matrix(NA,n_e_hermit,1)
+  k1_e_sum <- matrix(NA,n,1)
+  k2_e_sum <- matrix(NA,n,1)
+  f1 <- c()
+  class_pre <- matrix(NA,n,2)
+  
+  
+  ### step2 
+  # 变量选择
+  n_laten_eps <- n
+  laten_eps <- rnorm(n_laten_eps,0,sigma_laten)
+  
+  
+  r2_k1_v <-matrix(NA,n_laten_eps,1)
+  r2_k2_v <- matrix(NA,n_laten_eps,1)
+  r1_k1_v <-matrix(NA,n_laten_eps,1)
+  r1_k2_v <- matrix(NA,n_laten_eps,1)
+  k1_e_sum <- matrix(NA,n,1)
+  k2_e_sum <- matrix(NA,n,1)
+  f1 <- c()
+  class_pre <- matrix(NA,n,2)
+  
+  
+  ################################################################3
+  
+  
+  mu_r1_k1 <- -2
+  mu_r1_k2 <- 2
+  
+  sigmma_r1_k1 <- 0.5
+  sigmma_r1_k2 <- 0.5
+  
+  mu_r2_k1 <- -2
+  mu_r2_k2 <- 2
+  
+  sigmma_r2_k1 <- 0.5
+  sigmma_r2_k2 <- 0.5
+  
+  
+  gamma_r1_k1 <- -1
+  gamma_r1_k2 <- 1
+  
+  gamma_r2_k1 <- 1
+  gamma_r2_k2 <- 1
+  beta1_r1 <- 0.5
+  beta2_r1 <- 1
+  beta1_r2 <- 0.5
+  beta2_r2 <- 1
+  
+  pi_k1 <- 0.5
+  v_beta_t1 <- c()
+  ## 参数初始值
+  #coef_int <- coef(lm(y_r1_H[1:(n/2)]~-1+x1[1:(n/2)]+x2[1:(n/2)]+x_tuta[1:(n/2)]+v[1:(n/2)]+e_eps[1:(n/2)]))
+   
+  parameter_t0 <- c(-2,2,-2,2,0.5,0.5,0.5,0.5,0.5,-1,1,0.5,1,0.5,1) + rnorm(15,0,0.1)
+  parameter_v_t0 <- c(rep(1,4),rep(0,v_p-4)) + rnorm(v_p,0,0.1)
+  
+  G_r1_t0 <- G_r1#+#rnorm(length(G_r1),0,0.1)
+  G_r2_t0 <- G_r2#+#rnorm(length(G_r2),0,0.1)
+  q1 <- 1
+  error1 <- 1
+  
+  
+  ############################################################################
+  while (error1>0.001&q1 <=2) {
+    
+    mu_r1_k1_t0 <- parameter_t0[1];mu_r1_k2_t0 <- parameter_t0[2]
+    mu_r2_k1_t0 <- parameter_t0[3];mu_r2_k2_t0 <- parameter_t0[4]
+    pi_k1_t0 <- parameter_t0[5]; pi_k2_t0 <- 1-parameter_t0[5]
+    sigmma_r1_k1_t0 <- parameter_t0[6];sigmma_r1_k2_t0 <- parameter_t0[7]
+    sigmma_r2_k1_t0 <- parameter_t0[8];sigmma_r2_k2_t0 <- parameter_t0[9]
+    gamma_r1_k1_t0 <- parameter_t0[10];gamma_r1_k2_t0 <- parameter_t0[11]
+    beta1_r1_t0 <- parameter_t0[12]; beta2_r1_t0 <- parameter_t0[13];
+    beta1_r2_t0 <- parameter_t0[14]; beta2_r2_t0 <- parameter_t0[15];
+    v_beta_t0 <- parameter_v_t0
+    
+    #parameter <- c(parameter_t0, parameter_v_t0)
+    
+    # step1
+    # 估计模型参数
+    # mu gammma sigma 
+    obj <- function(parameter,parameter_v){
+      
+      mu_r1_k1 <- parameter[1]
+      mu_r1_k2 <- parameter[2]
+      
+      sigmma_r1_k1 <- parameter[6]
+      sigmma_r1_k2 <- parameter[7]
+      
+      mu_r2_k1 <- parameter[3]
+      mu_r2_k2 <- parameter[4]
+      
+      sigmma_r2_k1 <- parameter[8]
+      sigmma_r2_k2 <- parameter[9]
+      
+      
+      gamma_r1_k1 <- parameter[10]
+      gamma_r1_k2 <- parameter[11]
+      
+      pi_k1 <- parameter[5]
+      #pi_k2 <- parameter[12]
+      
+      #lamda <- parameter[13]
+      beta1_r1 <- parameter[12]
+      beta2_r1 <- parameter[13]
+      beta1_r2 <- parameter[14]
+      beta2_r2 <- parameter[15]
+      
+      for (g in 1:v_p) {
+        
+        v_beta[g] <- parameter[g+15] 
+      }
+      
+      
+      
+      for (i in 1:n) {
+        
+        #for (t in 1:n_e_hermit) {
+        
+        r1_k1[,1] <- dnorm(G_r1_t0[i],mean = x1[i]*beta1_r1 + x2[i]*beta2_r1 + x_tuta[i]*mu_r1_k1+gamma_r1_k1*(sum(v[i,] * v_beta) + laten_eps),sd=sqrt(x_tuta2[i]^2*sigmma_r1_k1^2+sigma_e^2)) 
+        r1_k2[,1] <- dnorm(G_r1_t0[i],mean = x1[i]*beta1_r1 + x2[i]*beta2_r1 + x_tuta[i]*mu_r1_k2+gamma_r1_k2*(sum(v[i,] * v_beta) + laten_eps),sd=sqrt(x_tuta2[i]^2*sigmma_r1_k2^2+sigma_e^2))
+        
+        r2_k1[,1] <- dnorm(G_r2_t0[i],mean = x1[i]*beta1_r2 + x2[i]*beta2_r2 + x_tuta[i]*mu_r2_k1+gamma_r2_k1*(sum(v[i,] * v_beta) + laten_eps),sd=sqrt(x_tuta2[i]^2*sigmma_r2_k1^2+sigma_e^2)) 
+        r2_k2[,1] <- dnorm(G_r2_t0[i],mean = x1[i]*beta1_r2 + x2[i]*beta2_r2 + x_tuta[i]*mu_r2_k2+gamma_r2_k2*(sum(v[i,] * v_beta) + laten_eps),sd=sqrt(x_tuta2[i]^2*sigmma_r2_k2^2+sigma_e^2))
+        
+        
+        #}
+        
+        k1_e_sum[i,] <- mean(r1_k1[,1]*(r2_k1[,1]))
+        k2_e_sum[i,] <- mean(r1_k2[,1]*(r2_k2[,1]))
+        
+        #}
+        
+        k1_e_sum[i,] <- mean(r1_k1[,1]*(r2_k1[,1]))
+        k2_e_sum[i,] <- mean(r1_k2[,1]*(r2_k2[,1]))
+        
+        #f1[i] <- pi_k1*k1_e_sum[i,]+ pi_k1*k2_e_sum[i,]
+        #f1[i] <- pi_k1*k1_e_sum[i,]+ (pi_k2)*k2_e_sum[i,]
+  
+        #}
+        
+          #f1[i] <- pi_k1*k1_e_sum[i,]+ pi_k1*k2_e_sum[i,]
+        #f1[i] <- pi_k1*k1_e_sum[i,]+ (pi_k2)*k2_e_sum[i,]
+        
+        f1[i] <- pi_k1*k1_e_sum[i,]+ (1-pi_k1)*k2_e_sum[i,]
+        
+        #class_pre[i,1] <- pi_k1*k1_e_sum[i,]/f1[i]
+        #class_pre[i,2] <- pi_k2*k2_e_sum[i,]/f1[i]
+        
+        
+      }
+      
+      #f1_sum <- sum(log(f1)) - lamda*((pi_r[1]+pi_r[2])-1)
+      f1_sum <- -sum(log(f1)) 
+      
+      #return(f1)
+      return(f1_sum)
+    }
+    
+    parameter_esti <-  try(nlminb(c(parameter_t0,parameter_v_t0),obj#,control = list( maxit=1)
+                                  #lower = parameter_true - abs(c(parameter_t0[1:4] * 0.5,parameter_t0[5:15] * 0.8)),
+                                  #upper = parameter_true + abs(c(parameter_t0[1:4] * 0.5,parameter_t0[5:15] * 0.8))
+    ),silent = T)
+    
+     #parameter_esti <- try(optim(par = c(parameter_t0,parameter_v_t0),fn=obj,
+      #                         method="BFGS"),silent = T)
+    
+    # parameter_esti <-  try(nlminb(c(parameter_t0,parameter_v_t0),method="BFGS",obj,#control = list( maxit=1),
+    #lower = parameter_true - abs(c(parameter_t0[1:4] * 0.5,parameter_t0[5:15] * 0.8)),
+    #upper = parameter_true + abs(c(parameter_t0[1:4] * 0.5,parameter_t0[5:15] * 0.8))
+    #),silent = T)
+    
+    
+    
+    
+    #parameter_esti <- try(optim(par = c(parameter_t0,parameter_v_t0),fn=obj,method="BFGS"),silent = T)
+    
+    
+    if("try-error" %in% class(parameter_esti)){
+      break;
+    }else{
+      
+      
+      #print(parameter_esti)
+      #parameter_esti <- optim(par = parameter_t0,fn=obj,method="BFGS",control = list( maxit=10))
+      #parameter_esti
+      #parameter_esti <- optim(par = parameter_init,fn=obj,method="L-BFGS-B",control = list( maxit=500))
+      #parameter_esti
+      #parameter_esti <- optim(par = parameter_init,fn=obj,method="SANN",control = list( maxit=500))
+      #parameter_esti
+      parameter_t1 <- parameter_esti$par
+      
+      mu_r1_k1_t1 <- parameter_t1[1];mu_r1_k2_t1 <- parameter_t1[2];
+      mu_r2_k1_t1 <- parameter_t1[3];mu_r2_k2_t1 <- parameter_t1[4]
+      pi_k1_t1 <- parameter_t1[5]; pi_k2_t1 <- 1-parameter_t1[5]
+      sigmma_r1_k1_t1 <- abs(parameter_t1[6]);sigmma_r1_k2_t1 <- abs(parameter_t1[7])
+      sigmma_r2_k1_t1 <- abs(parameter_t1[8]);sigmma_r2_k2_t1 <- abs(parameter_t1[9])
+      gamma_r1_k1_t1 <- parameter_t1[10];gamma_r1_k2_t1 <- parameter_t1[11]
+      beta1_r1_t1 <- parameter_t1[12]; beta2_r1_t1 <- parameter_t1[13];
+      beta1_r2_t1 <- parameter_t1[14]; beta2_r2_t1 <- parameter_t1[15];
+      
+      for (g in 1:v_p) {
+        v_beta_t1[g] <- parameter_t1[g+15] 
+      }
+      
+
+      v_beta_t1_scad <- ifelse(v_beta_t1 <0.5,0,v_beta_t1)
+      ###########################################################################################################  
+      ## GJ_r1
+      G_r1_order_estimate <- c()
+      G_r1_estimate <- c()
+      y_r1_index <- order(y_r1)
+      y_r1_tuta <- sort(y_r1)
+      for (m in 1:(n-1)) {
+        fr1<-function(G_r1_hat_order)
+        {
+          return(mean((as.numeric(y_r1<=y_r1_tuta[m]))) - mean(
+            pi_k1_t1*(pnorm(G_r1_hat_order,mean=x1*beta1_r1_t1 + x2*beta2_r1_t1 + x_tuta*mu_r1_k1_t1 + gamma_r1_k1_t1*(v %*% v_beta_t1),sd = sqrt(x_tuta2^2*sigmma_r1_k1_t1^2+gamma_r1_k1_t1^2*(sigma_laten)^2+sigma_e^2)))+
+              pi_k2_t1*(pnorm(G_r1_hat_order,mean=x1*beta1_r1_t1 + x2*beta2_r1_t1 + x_tuta*mu_r1_k2_t1+ gamma_r1_k2_t1*(v %*% v_beta_t1),sd = sqrt(x_tuta2^2*sigmma_r1_k2_t1^2+gamma_r1_k2_t1^2*(sigma_laten)^2+sigma_e^2))))
+          )
+          
+        }
+        
+        #esti <- optim(par = c(-50),fn=f1,lower = -60,upper = 60,method = "Brent")
+        #esti
+        root_fr1<-uniroot(fr1,c(-70,70),tol=0.0001,extendInt="yes") 
+        root_fr1
+        
+        G_r1_order_estimate[m] <- root_fr1$root
+        
+      }
+      
+      G_r1_estimate[y_r1_index] <-  c(G_r1_order_estimate,G_r1_order_estimate[n-1])
+      
+      
+      
+      ################################################
+      
+      
+      
+      # 估计GJ_r2
+      ###################################### 
+      G_r2_order_estimate <- c()
+      G_r2_estimate <- c()
+      y_r2_index <- order(y_r2)
+      y_r2_tuta <- sort(y_r2)
+      for (m in 1:(n-1)) {
+        fr2<-function(G_r2_hat_order)
+        {
+         return(mean((as.numeric(y_r2<=y_r2_tuta[m]))) - mean(
+          pi_k1_t1*(pnorm(G_r2_hat_order,mean=x1*beta1_r2_t1 + x2*beta2_r2_t1 + x_tuta*mu_r2_k1_t1 + gamma_r2_k1*(v %*% v_beta_t1),sd = sqrt(x_tuta2^2*sigmma_r2_k1_t1^2+gamma_r2_k1^2*(sigma_laten)^2+sigma_e^2)))+
+          pi_k2_t1*(pnorm(G_r2_hat_order,mean=x1*beta1_r2_t1 + x2*beta2_r2_t1 + x_tuta*mu_r2_k2_t1+ gamma_r2_k2*(v %*% v_beta_t1),sd = sqrt(x_tuta2^2*sigmma_r2_k2_t1^2+gamma_r2_k2^2*(sigma_laten)^2+sigma_e^2))))
+          )
+
+          
+        }
+        
+        #esti <- optim(par = c(-50),fn=f1,lower = -60,upper = 60,method = "Brent")
+        #esti
+        root_fr2<-uniroot(fr2,c(-70,70),tol=0.0001,extendInt="yes") 
+        root_fr2
+        
+        G_r2_order_estimate[m] <- root_fr2$root
+        
+      }
+      
+      G_r2_estimate[y_r2_index] <-  c(G_r2_order_estimate,G_r2_order_estimate[n-1])
+      
+      
+      
+      ################################
+      #参数结果
+      G_r2_t1 <- G_r2_estimate
+      G_r1_t1 <- G_r1_estimate
+      error1 <- mean(abs(c(parameter_t0,parameter_v_t0)-parameter_t1))
+      print(error1)
+      #print(max(abs(GJ_r2_t1-GJ_r2_t0)))
+      #print(max(abs(parameter_t0[1:4]-parameter_t1[1:4])))
+      #print(max(abs(parameter_t0[5:9]-parameter_t1[5:9])))
+      #print(max(abs(parameter_t0[10:11]-parameter_t1[10:11])))
+      
+      
+      G_r2_t0 <- G_r2_t1
+      G_r1_t0 <- G_r1_t1
+      
+      #print(parameter_esti)
+      #parameter_esti <- optim(par = parameter_t0,fn=obj,method="BFGS",control = list( maxit=10))
+      #parameter_esti
+      #parameter_esti <- optim(par = parameter_init,fn=obj,method="L-BFGS-B",control = list( maxit=500))
+      #parameter_esti
+      #parameter_esti <- optim(par = parameter_init,fn=obj,method="SANN",control = list( maxit=500))
+      #parameter_esti
+      ###########################################################################################################  
+    
+      error1 <- mean(abs(c(parameter_t0,parameter_v_t0)-parameter_t1))
+      print(error1)
+      #print(max(abs(GJ_r2_t1-GJ_r2_t0)))
+      #print(max(abs(parameter_t0[1:4]-parameter_t1[1:4])))
+      #print(max(abs(parameter_t0[5:9]-parameter_t1[5:9])))
+      #print(max(abs(parameter_t0[10:11]-parameter_t1[10:11])))
+
+      parameter_t0 <- parameter_t1[1:15] 
+      parameter_v_t0 <- v_beta_t1
+      q1=q1+1
+      print(q1)
+      print(parameter_t1)
+      
+    } 
+    
+  }
+  
+  
+  
+  
+  if("try-error" %in% class(parameter_esti)){
+    result[j,] <- NA
+    
+  }else{ 
+    
+    #X <- cbind(diag(1,20))
+    #y <- v_beta_t1
+    library(ncvreg)
+    
+    X = diag(1,length(v_beta_t1))
+    y = v_beta_t1
+    cvfit <- cv.ncvreg(X, y,penalty = c("SCAD"),gamma = 3.7,
+                       alpha = 0.1)
+    #plot(cvfit)
+    #summary(cvfit)
+    fit <- cvfit$fit
+    #plot(fit)
+    v_beta_t1_scad <- fit$beta[,cvfit$min]
+    v_true.cluster <- c(rep(1,4),rep(2,v_p-4)) 
+    v.RI =  fossil::rand.index(v_true.cluster,ceiling(fit$beta[,cvfit$min][-1]))
+    v.TRF <- sum(diag(table(v_true.cluster, abs(ceiling(fit$beta[,cvfit$min][-1]) - 2)    )))/ v_p
+    
+    
+    v_beta_t1_scad <- ifelse(v_beta_t1 <0.4,0,v_beta_t1)
+    #v_beta_t1_scad <- v_beta_t1
+    
+    
+    
+    #print(v_beta_t1_scad)
+    
+    
+    
+    ## 计算后验
+    
+    p_y_k1 <- c()
+    p_y_k2 <- c()
+    class_pro <- c()
+    for (i in 1:n){
+      
+      
+      r1_k1[,1] <- dnorm(G_r1_t0[i],mean = x1[i]*beta1_r1_t1 + x2[i]*beta2_r1_t1 + x_tuta[i]*mu_r1_k1_t1+gamma_r1_k1_t1*(sum(v[i,] * v_beta) + laten_eps),sd=sqrt(x_tuta2[i]^2*sigmma_r1_k1_t1^2+sigma_e^2)) 
+      r1_k2[,1] <- dnorm(G_r1_t0[i],mean = x1[i]*beta1_r1_t1 + x2[i]*beta2_r1_t1 + x_tuta[i]*mu_r1_k2_t1+gamma_r1_k2_t1*(sum(v[i,] * v_beta) + laten_eps),sd=sqrt(x_tuta2[i]^2*sigmma_r1_k2_t1^2+sigma_e^2))
+      
+      r2_k1[,1] <- dnorm(G_r2_t0[i],mean = x1[i]*beta1_r2_t1 + x2[i]*beta2_r2_t1 + x_tuta[i]*mu_r2_k1_t1+gamma_r2_k1*(sum(v[i,] * v_beta) + laten_eps),sd=sqrt(x_tuta2[i]^2*sigmma_r2_k1_t1^2+sigma_e^2)) 
+      r2_k2[,1] <- dnorm(G_r2_t0[i],mean = x1[i]*beta1_r2_t1 + x2[i]*beta2_r2_t1 + x_tuta[i]*mu_r2_k2_t1+gamma_r2_k1*(sum(v[i,] * v_beta) + laten_eps),sd=sqrt(x_tuta2[i]^2*sigmma_r2_k2_t1^2+sigma_e^2))
+      
+      #}
+      
+      k1_e_sum[i,] <- mean(r1_k1[,1]*(r2_k1[,1]))
+      k2_e_sum[i,] <- mean(r1_k2[,1]*(r2_k2[,1]))
+      
+      #}
+      
+      
+      #f1[i] <- pi_k1*k1_e_sum[i,]+ pi_k1*k2_e_sum[i,]
+      #f1[i] <- pi_k1*k1_e_sum[i,]+ (pi_k2)*k2_e_sum[i,]
+      
+      f1[i] <- pi_k1*k1_e_sum[i,]+ (1-pi_k1)*k2_e_sum[i,]
+      
+      p_y_k1[i] <- pi_k1*k1_e_sum[i,]/(f1[i]+0.00001)
+      p_y_k2[i] <- (1-pi_k1)*k2_e_sum[i,]/(f1[i]+0.00001)
+      
+      if(p_y_k1[i]>p_y_k2[i]){
+        class_pro[i] <- 1
+      }else{
+        class_pro[i] <- 2
+      }
+      
+      
+      
+    }
+    
+    table(class_pro)
+    
+    true.cluster <- c(rep(1,n/2),rep(2,n/2)) 
+    RI =  fossil::rand.index(true.cluster,class_pro)
+    
+    TRF <- sum(diag(table(true.cluster, class_pro)))/n
+    
+    
+    print(j)
+    print(RI)
+    result_G_r1[,j] <- as.matrix( c(G_r1_order_estimate,G_r1_order_estimate[n-1]))
+    result_G_r2[,j] <- as.matrix( c(G_r2_order_estimate,G_r2_order_estimate[n-1]))
+    
+    ################## end  
+    #result[j,] <- cbind(t(parameter_esti$par),t(v_beta_t1_scad),parameter_esti$convergence,error1,RI)
+    result[j,] <- cbind(t(c(parameter_esti$par[1:5],abs(parameter_esti$par[6:9]),parameter_esti$par[10:15])),
+                        t(v_beta_t1_scad),parameter_esti$convergence,error1,RI,TRF,v.RI,v.TRF)
+  }
+  #return(result[j,], result_G_r1[,j],result_G_r2[,j])
+  return(list(result[j,],result_G_r1[,j],result_G_r2[,j]))
+  
+  #return(result[j,])
+}
+
+
+#}
+
+
+
+
+library(doParallel)
+library(foreach)
+#cl <- makeCluster(num_cores) # mac or linux : type="FORK"
+cl <- makeCluster(100,type="FORK") # mac or linux : type="FORK"
+registerDoParallel(cl)
+#cl <- makeCluster(3)
+y <- foreach(j=1:rep,.combine='rbind') %dopar% estimate_fun(j)
+y
+stopCluster(cl)
+
+#save.image("HSM_x_sigma0.9_n400_p20_cc_k2_xc.RData")
+
+#save.image("HSM_n400_p300_cc_k2_xc.RData")
+#save.image("HSM_n400_p300_cc_k2_xd.RData")
+#save.image("HSM_n400_p300_cc_k2_xc_proposed.RData")
+
